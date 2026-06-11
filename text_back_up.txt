@@ -1,0 +1,405 @@
+import pygame
+import random
+
+pygame.init()
+
+# Load background image
+background_image = pygame.image.load("pictures/empty-chess-board-template-classic-ancient-game-on-wooden-floor-vector.jpg")
+image_width, image_height = background_image.get_size()
+screen = pygame.display.set_mode((image_width, image_height))
+pygame.display.set_caption("CHESS")
+
+# Constants for the board layout
+EDGE = 100  # Distance from the edge of the screen to the first square
+REAL_EDGE = 45
+BOTTOM = 100  # Distance from the bottom of the screen to the first square
+STRAIGHT_DISTANCE = 111.5  # Distance between the centers of squares
+LIFT_SCALE = STRAIGHT_DISTANCE * 1.3
+SHOW_MOVE = "pictures/actual/options.png"
+round_num = 1
+
+# Load piece images
+pieces = {
+    "black_bishop": "pictures/actual/Chess_bdt60.png",
+    "black_king": "pictures/actual/Chess_kdt60.png",
+    "black_knight": "pictures/actual/Chess_ndt60.png",
+    "black_pawn": "pictures/actual/Chess_pdt60.png",
+    "black_queen": "pictures/actual/Chess_qdt60.png",
+    "black_rook": "pictures/actual/Chess_rdt60.png",
+    "white_bishop": "pictures/actual/Chess_blt60.png",
+    "white_king": "pictures/actual/Chess_klt60.png",
+    "white_knight": "pictures/actual/Chess_nlt60.png",
+    "white_pawn": "pictures/actual/Chess_plt60.png",
+    "white_queen": "pictures/actual/Chess_qlt60.png",
+    "white_rook": "pictures/actual/Chess_rlt60.png"
+}
+
+class Square:
+    def __init__(self, name, x_range, y_range, occupied, show_move_position_x, show_move_position_y, letter, number):
+        self.name = name
+        self.x_range = x_range
+        self.y_range = y_range
+        self.occupied = occupied
+        self.occupied_by_color = ""
+        self.xmove_pos = show_move_position_x
+        self.ymove_pos = show_move_position_y
+        self.circle_pos = (self.xmove_pos, self.ymove_pos)
+        self.letter = letter
+        self.number = int(number)
+        
+        # Create a hitbox (rectangle) based on the x and y ranges
+        self.hitbox = pygame.Rect(self.x_range[0], self.y_range[0], self.x_range[1] - self.x_range[0], self.y_range[1] - self.y_range[0])
+
+    def show(self):
+        self.image = pygame.image.load(SHOW_MOVE)
+        self.image = pygame.transform.scale(self.image, (int(self.image.get_width() * 0.2), int(self.image.get_height() * 0.2)))
+        self.option_rect = self.image.get_rect(center=self.circle_pos)
+        screen.blit(self.image, self.option_rect.topleft)
+    
+    def draw_hitbox(self):
+        pygame.draw.rect(screen, (255, 0, 0), self.hitbox, 2)
+        pygame.draw.circle(screen, (255, 0, 0), self.circle_pos, 10)
+
+
+# Create squares
+squares = []
+for row in range(8):
+    for col in range(8):
+        square_name = f"{chr(97 + col)}{8 - row}"  # Naming like 'a8', 'b8', ..., 'h1'
+        x_start = REAL_EDGE + col * STRAIGHT_DISTANCE
+        x_end = x_start + STRAIGHT_DISTANCE 
+
+        y_start = REAL_EDGE + row * STRAIGHT_DISTANCE
+        y_end = y_start + STRAIGHT_DISTANCE  
+        occupied = False
+
+        Show_move_position_x = x_start + ((x_end - x_start) / 2)  # Corrected X calculation
+        Show_move_position_y = y_start + ((y_end - y_start) / 2)  # Corrected Y calculation
+
+        square = Square(square_name, [x_start, x_end], [y_start, y_end], occupied, Show_move_position_x, Show_move_position_y, letter=f'{chr(97+ col)}', number=int(8-row))
+
+        squares.append(square)
+
+class Piece:
+    def __init__(self, image_path, start_pos, scale_size, type, number, letter, color ):
+        self.image_path = image_path
+        self.scale_size =scale_size
+        self.image = pygame.image.load(self.image_path)
+        self.image = pygame.transform.scale(self.image, self.scale_size)
+        self.rect = self.image.get_rect(center=start_pos)
+        self.hitbox = self.rect.inflate(self.rect.width * 0.1, self.rect.height * 0.1)
+        self.lifted = False
+        self.type = type
+        self.number = int(number)
+        self.letter = letter
+        square_name = f'{self.letter}{str(self.number)}'
+        self.square_index = next((i for i, sq in enumerate(squares) if sq.name == square_name), None)
+        self.square = squares[self.square_index]
+        self.square.occupied = True
+        self.square.occupied_by_color = color
+        self.color = color
+        self.number_of_moves = 0
+
+        self.square.occupied = True
+
+    def move(self, new_square):
+        """ Move the piece to the new square """
+        self.rect.center = new_square.circle_pos  # Move the piece to the center of the new square
+        self.square.occupied = False  # Free up the old square
+        self.square.occupied_by_color = ''
+        if new_square.occupied == True:
+            for piece in list(pieces_on_board.values()):
+                if piece.square == new_square:
+                    piece.delete()
+        self.square = new_square  # Set the piece's new square
+        self.square.occupied = True  # Mark the new square as occupied
+        self.square.occupied_by_color = self.color
+        self.number_of_moves += 1  # Increase the number of moves
+        self.letter = new_square.letter
+        self.number = int(new_square.number)
+
+    def delete(self):
+        for key in list(pieces_on_board.keys()):
+            if pieces_on_board[key] == self:
+                del pieces_on_board[key]
+                break
+
+    def spawn(self):
+        screen.blit(self.image, self.rect.topleft)
+
+    def lift(self):
+ 
+        if not self.lifted:
+            self.image = pygame.image.load(self.image_path)
+            self.image = pygame.transform.scale(self.image, self.scale_size)
+            self.image = pygame.transform.scale(self.image, (int(LIFT_SCALE), int(LIFT_SCALE)))
+            self.rect = self.image.get_rect(center=self.rect.center)  # Corrected
+            screen.blit(self.image, self.rect.topleft)
+            self.lifted = True
+
+
+    def drop(self):
+        if self.lifted:
+            self.image = pygame.transform.scale(self.image, (STRAIGHT_DISTANCE, STRAIGHT_DISTANCE))
+            self.rect = self.image.get_rect(center=self.rect.center)
+            self.lifted = False
+
+    def show_options(self):
+        squares_to_return = []
+        king = False
+
+        def show_pawn_moves(color):
+            move_direction = 1 if color else -1
+
+            forward_square = f"{self.letter}{int(self.number) + move_direction}"
+            for sq in squares:
+                if sq.name == forward_square and not sq.occupied:
+                    sq.show()
+                    squares_to_return.append(sq)
+
+            if self.number_of_moves == 0:
+                two_square_forward = f"{self.letter}{int(self.number) + 2 * move_direction}"
+                for sq in squares:
+                    if sq.name == two_square_forward and not sq.occupied:
+                        sq.show()
+                        squares_to_return.append(sq)
+
+            left_diagonal = f"{chr(ord(self.letter) - 1)}{int(self.number) + move_direction}"
+            right_diagonal = f"{chr(ord(self.letter) + 1)}{int(self.number) + move_direction}"
+
+            for sq in squares:
+                if sq.name == left_diagonal and sq.occupied and sq.occupied_by_color != self.color:
+                    sq.show()
+                    squares_to_return.append(sq)
+                if sq.name == right_diagonal and sq.occupied and sq.occupied_by_color != self.color:
+                    sq.show()
+                    squares_to_return.append(sq)
+        def show_rook_moves():
+                forward_sqs = []
+                backward_sqs = []
+                left_sqs = []
+                right_sqs = []
+
+                # Collect squares in each direction
+                for sq in squares:
+                    if sq.letter == self.letter and int(sq.number) > int(self.number):
+                        forward_sqs.append(sq)
+                    elif sq.letter == self.letter and int(sq.number) < int(self.number):
+                        backward_sqs.append(sq)
+                    elif sq.number == self.number and ord(sq.letter) < ord(self.letter):
+                        left_sqs.append(sq)
+                    elif sq.number == self.number and ord(sq.letter) > ord(self.letter):
+                        right_sqs.append(sq)
+
+                # Sort squares in each direction based on proximity
+                forward_sqs = sorted(forward_sqs, key=lambda sq: sq.number)
+                backward_sqs = sorted(backward_sqs, key=lambda sq: sq.number, reverse=True)
+                left_sqs = sorted(left_sqs, key=lambda sq: sq.letter, reverse=True)  # Left goes from higher to lower letter (reverse=True)
+                right_sqs = sorted(right_sqs, key=lambda sq: sq.letter)  # Right goes from lower to higher letter
+
+                
+
+                # Function to display possible moves in a line until blocked
+                def see_line(sq_list):
+                    for sq in sq_list:
+                        if king == True and sq.occupied_by_color != self.color:
+                            squares_to_return.append(sq)
+                            break
+                        if sq.occupied:
+                                if sq.occupied_by_color != self.color:
+                                    sq.show()  # Show the square as a valid move
+                                    squares_to_return.append(sq)  # Capture opponent piece
+                                break  # Stop after first occupied square (either capture or block)
+                        else:
+                            sq.show()  # Show the square as a valid move
+                            squares_to_return.append(sq)
+
+                # Check all directions
+                see_line(forward_sqs)
+                see_line(backward_sqs)
+                see_line(left_sqs)
+                see_line(right_sqs)
+                return squares_to_return
+            
+        def show_bishop_moves():
+            diagonals = {
+                "top_right": [],
+                "top_left": [],
+                "bottom_right": [],
+                "bottom_left": []
+            }
+
+            for sq in squares:
+                # Calculate diagonal direction: top-right, top-left, bottom-right, bottom-left
+                letter_diff = ord(sq.letter) - ord(self.letter)
+                number_diff = sq.number - self.number
+
+                if letter_diff == number_diff > 0:  # Top-right diagonal
+                    diagonals["top_right"].append(sq)
+                elif letter_diff == number_diff < 0:  # Bottom-left diagonal
+                    diagonals["bottom_left"].append(sq)
+                elif letter_diff == -number_diff > 0:  # Top-left diagonal
+                    diagonals["top_left"].append(sq)
+                elif letter_diff == -number_diff < 0:  # Bottom-right diagonal
+                    diagonals["bottom_right"].append(sq)
+
+            # Sort the squares by proximity to the bishop
+            for direction in diagonals:
+                diagonals[direction] = sorted(diagonals[direction], key=lambda sq: abs(sq.number - self.number))
+
+            # Function to display possible moves in a diagonal line until blocked
+
+            def see_diagonal(sq_list):
+                for sq in sq_list:
+                    if king == True and sq.occupied_by_color != self.color:
+                        squares_to_return.append(sq)
+                        break
+                    if sq.occupied:
+                        if sq.occupied_by_color != self.color:
+                            sq.show()  # Show the square as a valid move (to capture)
+                            squares_to_return.append(sq)
+                        break  # Stop after encountering the first occupied square
+                    else:
+                        sq.show()  # Show the square as a valid move
+                        squares_to_return.append(sq)
+
+            # Check all diagonals
+            for direction in diagonals:
+                see_diagonal(diagonals[direction])
+
+            return squares_to_return
+        def show_knight_moves():
+            for sq in squares:
+                letter_diff = ord(sq.letter) - ord(self.letter)
+                number_diff = sq.number - self.number
+            
+                if (number_diff == 2 and abs(letter_diff) == 1) or (number_diff == -2 and abs(letter_diff) == 1):
+                        if sq.occupied_by_color != self.color:
+                           squares_to_return.append(sq)
+
+                if (letter_diff == 2 and abs(number_diff) == 1) or (letter_diff == -2 and abs(number_diff) == 1):
+                    if sq.occupied_by_color != self.color:
+                        squares_to_return.append(sq)
+            
+        if self.type == "pawn":
+            show_pawn_moves(self.color)
+        if self.type == "rook":
+            king = False
+            show_rook_moves()
+        if self.type == "bishop":
+         king = False
+         show_bishop_moves()
+        if self.type =="queen":
+            king = False
+            show_rook_moves()
+            show_bishop_moves()
+        if self.type == "king":
+            king = True
+            show_rook_moves()
+            show_bishop_moves()
+        if self.type == "knight":
+            show_knight_moves()
+
+
+        return squares_to_return
+        
+
+def create_board():
+    piece_order = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook']
+    pieces_on_board = {}
+
+    for i, piece in enumerate(piece_order):
+        # White pieces (bottom side)
+        pieces_on_board[f"{chr(97 + i)}_wp"] = Piece(
+            image_path=pieces[f"white_pawn"],
+            start_pos=(EDGE + STRAIGHT_DISTANCE * i, image_height - (STRAIGHT_DISTANCE + BOTTOM)),
+            scale_size=(STRAIGHT_DISTANCE, STRAIGHT_DISTANCE),
+            type="pawn",
+            letter=f"{chr(97 + i)}",
+            number="2",
+            color=True
+        )
+        pieces_on_board[f"{chr(97 + i)}_w{piece[0]}"] = Piece(
+            image_path=pieces[f"white_{piece}"],
+            start_pos=(EDGE + STRAIGHT_DISTANCE * i, image_height - BOTTOM),
+            scale_size=(STRAIGHT_DISTANCE, STRAIGHT_DISTANCE),
+            type=piece,
+            letter=f"{chr(97 + i)}",
+            number="1",
+            color=True
+        )
+
+        # Black pieces (top side)
+        pieces_on_board[f"{chr(97 + i)}_bp"] = Piece(
+            image_path=pieces[f"black_pawn"],
+            start_pos=(EDGE + STRAIGHT_DISTANCE * i, STRAIGHT_DISTANCE + BOTTOM),
+            scale_size=(STRAIGHT_DISTANCE, STRAIGHT_DISTANCE),
+            type="pawn",
+            letter=f"{chr(97 + i)}",
+            number="7",
+            color=False
+        )
+        pieces_on_board[f"{chr(97 + i)}_b{piece[0]}"] = Piece(
+            image_path=pieces[f"black_{piece}"],
+            start_pos=(EDGE + STRAIGHT_DISTANCE * i, BOTTOM),
+            scale_size=(STRAIGHT_DISTANCE, STRAIGHT_DISTANCE),
+            type=piece,
+            letter=f"{chr(97 + i)}",
+            number="8",
+            color=False
+        )
+
+    return pieces_on_board
+
+pieces_on_board = create_board()
+squares_to_blit = []
+running = True
+lifted_piece = False
+
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            mouse = pygame.mouse.get_pos()
+            if lifted_piece:
+                for sq in squares_to_blit:
+                    if sq.hitbox.collidepoint(mouse):
+                        pieces_on_board[piece_lifted].move(sq)
+                        round_num += 1
+
+            for piece in pieces_on_board.values():
+                if piece.lifted == True:
+                    piece.drop()
+                    squares_to_blit = []
+                    lifted_piece = False
+                elif round_num % 2 != 0:
+                    if piece.square.hitbox.collidepoint(mouse) and not lifted_piece and piece.color == True:
+                        piece.lift()
+                        squares_to_blit = piece.show_options()
+                      #  for sq in squares_to_blit:
+                       #     print(sq.name)
+
+                        piece_lifted = next(key for key, value in pieces_on_board.items() if value == piece)
+                        lifted_piece = True
+
+                elif round_num % 2 == 0:
+                    if piece.square.hitbox.collidepoint(mouse) and not lifted_piece and piece.color == False:
+                        piece.lift()
+                        squares_to_blit = piece.show_options()
+                        lifted_piece = True
+                        piece_lifted = next(key for key, value in pieces_on_board.items() if value == piece)
+
+    screen.blit(background_image, (0, 0))
+
+    for sq in squares_to_blit:
+        sq.show()
+        
+
+
+    for piece in pieces_on_board.values():
+        piece.spawn()
+
+    pygame.display.update()
+
+pygame.quit()
