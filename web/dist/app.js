@@ -1,9 +1,15 @@
-import { Chess } from './chess.mjs';
+import { Chess } from './chess.js';
 
 const game = new Chess();
 const $ = (id) => document.getElementById(id);
 const names = {p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'};
 let selected = null, flipped = false, pendingPromotion = null, soundOn = false, audioContext;
+let room = null, busy = false, joining = false, pollTimer = null, syncing = false;
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch { /* In-memory play still works. */ } },
+  remove(key) { try { localStorage.removeItem(key); } catch { /* Optional browser storage. */ } }
+};
 const colorName = (color) => color === 'w' ? 'White' : 'Black';
 
 function gameStatus() {
@@ -64,7 +70,10 @@ function render() {
   $('bottom-player').innerHTML=playerMarkup(flipped?'b':'w');
   const status=gameStatus(); $('status').textContent=status.title; $('status-detail').textContent=status.detail;
   $('turn-marker').classList.toggle('black',game.turn()==='b');
-  const history=game.history(); $('move-count').textContent=`${history.length} played`; $('undo').disabled=!history.length;
+  const history=game.history(); $('move-count').textContent=`${history.length} played`; $('undo').disabled=Boolean(room)||!history.length;
+  $('new-game').disabled=Boolean(room);
+  document.querySelector('.eyebrow').textContent=room ? `ROOM ${room.pin} · YOU ARE ${colorName(room.color).toUpperCase()}` : 'LOCAL CHESS';
+  if(room && !game.isGameOver()) $('status-detail').textContent=!room.ready ? 'Waiting for your friend to join the same code.' : game.turn()===room.color ? 'Your turn. Select a piece to see its legal moves.' : 'Your friend is thinking. Their move will appear here.';
   const container=$('history');
   if (!history.length) container.innerHTML='<div class="empty-history"><span>01</span><p>Every game starts<br>with a possibility.</p></div>';
   else {
@@ -91,7 +100,19 @@ function playSound(capture) {
   } catch { /* Audio is optional. */ }
 }
 
-function makeMove(from,to,promotion='q') {
+async function makeMove(from,to,promotion='q') {
+  if(room) {
+    if(busy || !room.ready || game.turn()!==room.color) return;
+    busy=true;
+    const current=room;
+    try {
+      const state=await request(`/api/rooms/${current.pin}/moves`,{from,to,promotion,version:current.version},current.token);
+      if(room===current) { applyState(state); playSound(false); }
+    } catch(error) {
+      if(room===current) { $('room-message').textContent=error.message; await syncRoom(); }
+    } finally { busy=false; }
+    return;
+  }
   if(game.isGameOver()) throw new Error('The game has ended. Start a new game to play.');
   const move=game.move({from,to,promotion});
   selected=null;render();playSound(Boolean(move.captured));
@@ -99,7 +120,7 @@ function makeMove(from,to,promotion='q') {
 }
 
 function selectSquare(square) {
-  if(game.isGameOver()||pendingPromotion) return;
+  if(game.isGameOver()||pendingPromotion||busy||(room&&(!room.ready||game.turn()!==room.color))) return;
   const moves=selected ? game.moves({square:selected,verbose:true}).filter(move=>move.to===square) : [];
   if(moves.length) {
     if(moves.some(move=>move.promotion)) {
@@ -121,14 +142,77 @@ $('promotion').addEventListener('close',()=>{
   const pending=pendingPromotion;pendingPromotion=null;
   if(pending&&['q','r','b','n'].includes($('promotion').returnValue)) makeMove(pending.from,pending.to,$('promotion').returnValue);
 });
-$('undo').onclick=()=>{game.undo();selected=null;render();};
+$('undo').onclick=()=>{if(room)return;game.undo();selected=null;render();};
 $('flip').onclick=()=>{flipped=!flipped;render();};
 $('sound').onclick=()=>{soundOn=!soundOn;$('sound').textContent=`Sound ${soundOn?'on':'off'}`;$('sound').setAttribute('aria-pressed',String(soundOn));playSound(false);};
-$('new-game').onclick=()=>{if(game.history().length) {$('restart').returnValue='cancel';$('restart').showModal();}else{game.reset();selected=null;render();}};
-$('restart').addEventListener('close',()=>{if($('restart').returnValue==='restart'){game.reset();selected=null;render();}});
+$('new-game').onclick=()=>{if(room)return;if(game.history().length) {$('restart').returnValue='cancel';$('restart').showModal();}else{game.reset();selected=null;render();}};
+$('restart').addEventListener('close',()=>{if(!room&&$('restart').returnValue==='restart'){game.reset();selected=null;render();}});
 document.querySelectorAll('[data-theme]').forEach(button=>button.onclick=()=>{document.body.dataset.theme=button.dataset.theme;document.querySelectorAll('.swatch').forEach(swatch=>swatch.setAttribute('aria-pressed',String(swatch===button)));});
-document.addEventListener('keydown',event=>{if(event.key.toLowerCase()==='f'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!document.querySelector('dialog[open]')){flipped=!flipped;render();}});
+document.addEventListener('keydown',event=>{if(event.target.matches('input,textarea,[contenteditable]'))return;if(event.key.toLowerCase()==='f'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!document.querySelector('dialog[open]')){flipped=!flipped;render();}});
 render();
+
+async function request(path, body, token) {
+  const response=await fetch(path, {method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:`Bearer ${token}`}:{})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(10000)});
+  if(!response.headers.get('content-type')?.includes('application/json')) throw new Error('Online play needs the Chess Room server. Local chess is available.');
+  const data=await response.json();
+  if(!response.ok) throw Object.assign(new Error(data.error||'Unable to connect.'),{status:response.status});
+  return data;
+}
+function applyState(state) {
+  if(state.version<room.version) return;
+  const changed=state.version!==room.version;
+  Object.assign(room,{version:state.version,ready:state.ready});
+  if(changed) {
+    game.reset();for(const move of state.moves)game.move(move);
+    selected=null;render();
+  }
+  $('room-message').textContent=`Room ${room.pin} · You are ${colorName(room.color)}. ${room.ready?'Connected. Moves save automatically.':'Waiting for your friend…'}`;
+}
+async function syncRoom() {
+  if(!room||syncing)return;
+  const current=room;syncing=true;
+  try { const state=await request(`/api/rooms/${current.pin}`,undefined,current.token);if(room===current)applyState(state); }
+  catch(error) {if(room===current)$('room-message').textContent=`Connection interrupted: ${error.message} Retrying…`;}
+  finally {syncing=false;}
+}
+async function joinRoom(pin) {
+  if(joining)return;
+  joining=true;$('join-button').disabled=true;
+  $('room-message').textContent='Joining room…';
+  const key=`chess-room-token-${pin}`;
+  try {
+    let token=storage.get(key);
+    let state;
+    try {state=await request(`/api/rooms/${pin}/join`,{},token);}
+    catch(error) {if(error.status!==401)throw error;storage.remove(key);token=null;state=await request(`/api/rooms/${pin}/join`,{});}
+    room={pin,token:state.token||token,color:state.color,version:-1,ready:false};
+    storage.set(key,room.token);storage.set('chess-active-room',pin);
+    flipped=room.color==='b';pendingPromotion=null;
+    for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+    $('join-room').hidden=true;$('leave-room').hidden=false;
+    applyState(state);
+    clearInterval(pollTimer);pollTimer=setInterval(syncRoom,1200);
+  } catch(error) {$('room-message').textContent=error.message;}
+  finally {joining=false;$('join-button').disabled=false;}
+}
+$('join-room').onsubmit=event=>{
+  event.preventDefault();
+  const pin=$('room-pin').value.trim();
+  if(!/^[0-9]{5}$/.test(pin))return;
+  if(game.history().length&&!window.confirm('Join online? This will replace your local game.'))return;
+  void joinRoom(pin);
+};
+$('leave-room').onclick=()=>{
+  if(busy)return;
+  clearInterval(pollTimer);room=null;storage.remove('chess-active-room');
+  game.reset();selected=null;pendingPromotion=null;flipped=false;
+  for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+  $('join-room').hidden=false;$('leave-room').hidden=true;
+  $('room-message').textContent='Your online seat is saved in this browser. Rejoin that code, or choose a new code for a new game.';
+  render();
+};
+const savedRoom=storage.get('chess-active-room');
+if(savedRoom&&/^\d{5}$/.test(savedRoom)) {$('room-pin').value=savedRoom;void joinRoom(savedRoom);}
 
 // Optional agent access shares exactly the same state and move action as the board.
 if (document.modelContext?.registerTool) {

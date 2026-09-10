@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171a20">
-  <meta name="description" content="A quiet place for a game of chess. Play a friend on the same screen.">
+  <meta name="description" content="Play chess with a friend on one screen or online with a five-digit room code.">
   <title>Chess Room</title>
   <link rel="icon" href="assets/wn.png">
   <link rel="stylesheet" href="style.css">
@@ -23,6 +23,16 @@
     </section>
     <aside>
       <div class="game-heading"><span class="eyebrow">LOCAL CHESS</span><h1>Your move.</h1></div>
+      <section class="room-card" aria-label="Online multiplayer">
+        <h2>Play a friend online</h2>
+        <p>Enter the same five-digit code on two devices.</p>
+        <form id="join-room">
+          <label for="room-pin">Room code</label>
+          <div class="room-input"><input id="room-pin" name="pin" inputmode="numeric" pattern="[0-9]{5}" minlength="5" maxlength="5" placeholder="12345" autocomplete="off" required><button id="join-button" class="primary">Join game</button></div>
+        </form>
+        <p id="room-message" role="status" aria-live="polite">First player is White; second is Black.</p>
+        <button id="leave-room" class="text-button" hidden>Back to local game</button>
+      </section>
       <section class="status-card" aria-label="Game status">
         <div class="status-line"><span class="turn-marker" id="turn-marker"></span><strong id="status" role="status" aria-live="polite">White to move</strong></div>
         <p id="status-detail">The board is yours. White moves first.</p>
@@ -35,13 +45,13 @@
       </section>
       <button class="new-game" id="new-game">New game <span>+</span></button>
       <div class="appearance"><span>Board</span><div class="themes" role="group" aria-label="Board color"><button class="swatch blue" data-theme="blue" aria-label="Blue board" aria-pressed="true"></button><button class="swatch classic" data-theme="classic" aria-label="Classic board" aria-pressed="false"></button><button class="swatch graphite" data-theme="graphite" aria-label="Graphite board" aria-pressed="false"></button></div></div>
-      <p class="small-note">Pass the turn to a friend.<br>No clocks. Take your time.</p>
+      <p class="small-note">Play on one screen or share a room code.<br>No clocks. Take your time.</p>
     </aside>
   </main>
   <footer><span>THE CLASSIC GAME. YOUR NEXT CHAPTER.</span><span>Made for the love of chess.</span></footer>
   <dialog id="promotion"><form method="dialog"><span class="eyebrow">PAWN PROMOTION</span><h2>Choose your piece.</h2><div id="promotion-options"></div><button class="cancel-button" value="cancel">Cancel</button></form></dialog>
   <dialog id="restart"><form method="dialog"><span class="eyebrow">A FRESH BOARD</span><h2>Start a new game?</h2><p>This will clear the current game and move history.</p><div class="dialog-actions"><button value="cancel">Keep playing</button><button class="primary" value="restart">New game</button></div></form></dialog>
   <noscript>This chess game needs JavaScript enabled in your browser.</noscript>
-  <script type="module" src="app.mjs"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

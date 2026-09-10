@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
-import {Chess} from './dist/chess.mjs';
+import {Chess} from './dist/chess.js';
 
 const game=new Chess();
 assert.equal(game.moves().length,20);

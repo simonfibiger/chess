@@ -1,8 +1,14 @@
 # Chess Room
 
-A two-player, same-screen browser chess game using the piece PNGs from `C:\programing\chess\pictures\actual\pieces`.
+A two-player browser chess game: play on the same screen or join a friend online with a five-digit room code.
 
-The original Python project is unchanged. Its movement code is tightly coupled to Pygame rendering and currently ends games by capturing a king. This version uses the bundled BSD-licensed chess.js 1.4.0 library for standard legal moves, check/checkmate, stalemate, castling, en passant, promotion, and draw detection. It automatically ends games on threefold repetition or the 50-move rule. There is no Python backend, computer opponent, online multiplayer, clock, or saved-game persistence.
+The original Python project is unchanged. This version uses the bundled BSD-licensed chess.js 1.4.0 library for standard legal moves, check/checkmate, stalemate, castling, en passant, promotion, and draw detection. It automatically ends games on threefold repetition or the 50-move rule. Online games use a Node 24 server and SQLite to save moves and enforce turns; browsers poll for updates every 1.2 seconds. There is no computer opponent or clock.
+
+## Play online
+
+Run `npm start` with Node 24+ installed, then open `http://localhost:3000`. Enter the same five-digit code on two devices: the first joins as White, the second as Black. Refreshing restores your seat in the same browser. A third player cannot join an occupied room. Online undo and reset are disabled; choose a new code for another game. Room data is retained for seven days without a move or join. Browser storage must remain available to restore a seat after refresh.
+
+For the hosted site, follow [Dokploy deployment settings](DEPLOY.md), including its persistent `/data` volume. Static hosting supports same-screen play only.
 
 ## Run locally
 
@@ -14,4 +20,4 @@ All assets and the rules library are bundled locally. No external runtime servic
 
 ## Validation
 
-`node check.mjs` checks chess rule scenarios and local assets. JavaScript syntax and the local HTTP response were also checked. Optional WebMCP read/move tools are feature-detected; no supported WebMCP validation context was available, so these experimental tools were not verified. Browser interaction and visual testing have not been performed.
+Run `npm ci` then `npm test`. Tests check chess rules, assets, room pairing, seat authentication, turn enforcement, duplicate requests, room isolation, checkmate, JavaScript MIME types, and persistence through a server restart. DOM tests also check board rendering, local controls, and two clients syncing moves and reconnecting. These are simulated DOM checks, not visual browser tests. Optional WebMCP read/move tools are feature-detected; no supported WebMCP validation context was available, so these experimental tools were not verified.
