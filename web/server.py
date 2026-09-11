@@ -170,18 +170,27 @@ def create_app(database=None):
     return app
 
 def main():
-    from waitress import serve
+    from waitress import create_server
     parser = argparse.ArgumentParser(description='Start online Chess Room')
     parser.add_argument('--host', default=os.environ.get('HOST', '127.0.0.1'))
     parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', '8765')))
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args()
     app = create_app()
+    try:
+        server = create_server(app, host=args.host, port=args.port, threads=8)
+    except OSError as error:
+        parser.exit(1, f'Cannot start on port {args.port}: {error}\nStop the existing server or choose --port 8766.\n')
     url = f'http://{"127.0.0.1" if args.host == "0.0.0.0" else args.host}:{args.port}/'
     print(f'Chess Room: {url}\nKeep this server running while playing.', flush=True)
     if not args.no_browser:
         webbrowser.open(url)
-    serve(app, host=args.host, port=args.port, threads=8)
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.close()
 
 if __name__ == '__main__':
     main()

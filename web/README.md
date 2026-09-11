@@ -4,7 +4,11 @@ Play on the same screen, or create a room and invite a friend on another device.
 
 ## Start on Windows
 
-Double-click `Start Chess.cmd`. The first run creates a virtual environment and installs the packages in `requirements.txt`, then starts the Python server on port 8765. Keep the terminal open.
+Double-click `Start Chess.cmd`. The first run creates a virtual environment and installs the packages in `requirements.txt`, then starts the Python server on port 8766. Keep the terminal open. Stop any other Chess Room server using that port first.
+
+In VS Code, open this repository's root folder on branch `python-online-backend`. After installing the requirements, select **Chess — Python multiplayer** in Run and Debug and press F5. This explicitly uses `web/server.py` and `web/.venv`, rather than an old Node server or a different Python interpreter. The Microsoft Python/Python Debugger extensions are required for F5; the `.cmd` launcher does not require them.
+
+If your usual checkout still shows the old version, run `git fetch origin` and `git switch python-online-backend` in that checkout's terminal. This keeps the original versions in Git history. Do not use Live Server or `npm start` for the Python version.
 
 Or run from this folder:
 
