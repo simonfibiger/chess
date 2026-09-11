@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171a20">
-  <meta name="description" content="A quiet place for a game of chess. Play a friend on the same screen.">
+  <meta name="description" content="Play a friend on one screen or invite them to an online chess room.">
   <title>Chess Room</title>
   <link rel="icon" href="assets/wn.png">
   <link rel="stylesheet" href="style.css">
@@ -22,7 +22,14 @@
       <div class="board-caption"><span>Click a piece, then its destination.</span><button id="flip" class="text-button" title="Flip board (F)">↕ Flip board</button></div>
     </section>
     <aside>
-      <div class="game-heading"><span class="eyebrow">LOCAL CHESS</span><h1>Your move.</h1></div>
+      <div class="game-heading"><span class="eyebrow" id="game-mode">LOCAL CHESS</span><h1>Your move.</h1></div>
+      <section class="online-panel" aria-label="Online multiplayer">
+        <button id="create-room" class="primary-online">Create online game</button>
+        <button id="join-room" class="primary-online" hidden>Join invited game</button>
+        <p id="connection" role="status">Create a room and invite a friend on another device.</p>
+        <div id="invite-box" hidden><label for="invite-link">Share this link with your friend</label><input id="invite-link" readonly><button id="copy-invite">Copy invite</button></div>
+        <button id="leave-room" class="text-button" hidden>Return to local board</button>
+      </section>
       <section class="status-card" aria-label="Game status">
         <div class="status-line"><span class="turn-marker" id="turn-marker"></span><strong id="status" role="status" aria-live="polite">White to move</strong></div>
         <p id="status-detail">The board is yours. White moves first.</p>

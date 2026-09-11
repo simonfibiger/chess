@@ -1,12 +1,16 @@
 import { Chess } from './chess.mjs';
+import { RoomClient } from './online.mjs';
 
 const game = new Chess();
 const $ = (id) => document.getElementById(id);
 const names = {p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'};
 let selected = null, flipped = false, pendingPromotion = null, soundOn = false, audioContext;
+let online=null, moveBusy=false, seenVersion=-1;
 const colorName = (color) => color === 'w' ? 'White' : 'Black';
 
 function gameStatus() {
+  if(online?.room&&!online.state) return {title:'Connecting to room',detail:'Restoring your game from the server.'};
+  if(online?.state&&!online.state.ready) return {title:'Waiting for your friend',detail:'You are White. Share the invite link to start.'};
   if (game.isCheckmate()) return {title:`${colorName(game.turn() === 'w' ? 'b' : 'w')} wins`,detail:'Checkmate. A well-played finish.'};
   if (game.isStalemate()) return {title:'Draw by stalemate',detail:'No legal moves, and the king is not in check.'};
   if (game.isThreefoldRepetition()) return {title:'Draw by repetition',detail:'The same position has occurred three times.'};
@@ -64,7 +68,8 @@ function render() {
   $('bottom-player').innerHTML=playerMarkup(flipped?'b':'w');
   const status=gameStatus(); $('status').textContent=status.title; $('status-detail').textContent=status.detail;
   $('turn-marker').classList.toggle('black',game.turn()==='b');
-  const history=game.history(); $('move-count').textContent=`${history.length} played`; $('undo').disabled=!history.length;
+  const history=game.history(); $('move-count').textContent=`${history.length} played`; $('undo').disabled=!history.length||Boolean(online?.room);
+  $('new-game').disabled=Boolean(online?.room);
   const container=$('history');
   if (!history.length) container.innerHTML='<div class="empty-history"><span>01</span><p>Every game starts<br>with a possibility.</p></div>';
   else {
@@ -91,7 +96,16 @@ function playSound(capture) {
   } catch { /* Audio is optional. */ }
 }
 
-function makeMove(from,to,promotion='q') {
+async function makeMove(from,to,promotion='q') {
+  if(moveBusy) throw new Error('A move is already being sent.');
+  if(online?.room){
+    if(online.state?.color!==game.turn()) throw new Error('It is the other player’s turn.');
+    const legal=game.moves({square:from,verbose:true}).find(move=>move.to===to&&(!move.promotion||move.promotion===promotion));
+    if(!legal)throw new Error('That move is not legal.');
+    moveBusy=true;
+    try {const data=await online.move(from+to+(legal.promotion||''));selected=null;render();playSound(Boolean(legal.captured));return {fen:data.fen,status:gameStatus().title};}
+    finally{moveBusy=false;}
+  }
   if(game.isGameOver()) throw new Error('The game has ended. Start a new game to play.');
   const move=game.move({from,to,promotion});
   selected=null;render();playSound(Boolean(move.captured));
@@ -99,7 +113,8 @@ function makeMove(from,to,promotion='q') {
 }
 
 function selectSquare(square) {
-  if(game.isGameOver()||pendingPromotion) return;
+  if(game.isGameOver()||pendingPromotion||moveBusy) return;
+  if(online?.room&&(!online.connected||!online.state?.ready||online.state.color!==game.turn()))return;
   const moves=selected ? game.moves({square:selected,verbose:true}).filter(move=>move.to===square) : [];
   if(moves.length) {
     if(moves.some(move=>move.promotion)) {
@@ -111,7 +126,7 @@ function selectSquare(square) {
       }
       $('promotion').returnValue='cancel';$('promotion').showModal();return;
     }
-    makeMove(selected,square);return;
+    makeMove(selected,square).catch(showOnlineError);return;
   }
   selected=game.get(square)?.color===game.turn() && selected!==square ? square : null;
   render();
@@ -119,15 +134,52 @@ function selectSquare(square) {
 
 $('promotion').addEventListener('close',()=>{
   const pending=pendingPromotion;pendingPromotion=null;
-  if(pending&&['q','r','b','n'].includes($('promotion').returnValue)) makeMove(pending.from,pending.to,$('promotion').returnValue);
+  if(pending&&['q','r','b','n'].includes($('promotion').returnValue)) makeMove(pending.from,pending.to,$('promotion').returnValue).catch(showOnlineError);
 });
-$('undo').onclick=()=>{game.undo();selected=null;render();};
+$('undo').onclick=()=>{if(online?.room)return;game.undo();selected=null;render();};
 $('flip').onclick=()=>{flipped=!flipped;render();};
 $('sound').onclick=()=>{soundOn=!soundOn;$('sound').textContent=`Sound ${soundOn?'on':'off'}`;$('sound').setAttribute('aria-pressed',String(soundOn));playSound(false);};
 $('new-game').onclick=()=>{if(game.history().length) {$('restart').returnValue='cancel';$('restart').showModal();}else{game.reset();selected=null;render();}};
 $('restart').addEventListener('close',()=>{if($('restart').returnValue==='restart'){game.reset();selected=null;render();}});
 document.querySelectorAll('[data-theme]').forEach(button=>button.onclick=()=>{document.body.dataset.theme=button.dataset.theme;document.querySelectorAll('.swatch').forEach(swatch=>swatch.setAttribute('aria-pressed',String(swatch===button)));});
 document.addEventListener('keydown',event=>{if(event.key.toLowerCase()==='f'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!document.querySelector('dialog[open]')){flipped=!flipped;render();}});
+function showOnlineError(error){$('connection').textContent=error.message||String(error);}
+let storage;
+try{storage=window.localStorage;}catch{storage=null;}
+online=new RoomClient({baseUrl:location.origin,storage,onState:(data)=>{
+  if(seenVersion!==data.version){
+    if(seenVersion===-1)flipped=data.color==='b';
+    game.reset();for(const uci of data.moves)game.move({from:uci.slice(0,2),to:uci.slice(2,4),promotion:uci[4]||'q'});
+    selected=null;seenVersion=data.version;
+  }
+  $('game-mode').textContent=`ONLINE · YOU ARE ${colorName(data.color).toUpperCase()}`;
+  $('invite-box').hidden=false;$('leave-room').hidden=false;$('join-room').hidden=true;
+  const invite=new URL(location.href);invite.search='';invite.searchParams.set('room',data.room);invite.hash='';
+  $('invite-link').value=invite.href;history.replaceState(null,'',invite);
+  document.querySelector('.small-note').textContent='Online rooms last seven days. Reopen this link in the same browser to resume.';
+  render();
+},onConnection:(message)=>{
+  $('connection').textContent=message==='Connected'?`Connected as ${colorName(online.state.color)}. ${online.state.ready?'Moves update automatically.':'Waiting for your friend.'}`:message;
+}});
+async function roomAction(action){
+  $('create-room').disabled=true;$('join-room').disabled=true;
+  try{await action();}catch(error){showOnlineError(error);}finally{$('create-room').disabled=false;$('join-room').disabled=false;}
+}
+$('create-room').onclick=()=>roomAction(async()=>{seenVersion=-1;await online.create();});
+const invitedRoom=new URL(location.href).searchParams.get('room');
+$('join-room').onclick=()=>roomAction(async()=>{seenVersion=-1;await online.join(invitedRoom);});
+$('copy-invite').onclick=async()=>{try{await navigator.clipboard.writeText($('invite-link').value);$('connection').textContent='Invite copied. Send it to your friend.';}catch{$('invite-link').select();$('connection').textContent='Select and copy the invite link above.';}};
+$('leave-room').onclick=()=>{
+  online.stop();seenVersion=-1;game.reset();selected=null;flipped=false;
+  const url=new URL(location.href);url.search='';history.replaceState(null,'',url);
+  $('invite-box').hidden=true;$('leave-room').hidden=true;$('join-room').hidden=true;
+  $('game-mode').textContent='LOCAL CHESS';$('connection').textContent='Create a room and invite a friend on another device.';
+  document.querySelector('.small-note').textContent='Pass the turn to a friend. No clocks. Take your time.';render();
+};
+if(invitedRoom){
+  if(online.saved(invitedRoom))roomAction(()=>online.resume(invitedRoom));
+  else{$('join-room').hidden=false;$('connection').textContent='You have been invited. Join to play as Black.';}
+}
 render();
 
 // Optional agent access shares exactly the same state and move action as the board.

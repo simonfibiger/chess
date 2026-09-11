@@ -1,5 +1,7 @@
 # Where the Python project stopped
 
+**Online update:** the later `feat: add Python backend for online chess rooms` commit adds server-authoritative online play inside `web/`. The two earlier checkpoints below remain intact. For current startup and hosting instructions, read `web/README.md`; the browser-version description below documents the earlier offline checkpoint.
+
 The original desktop project is preserved exactly, including unfinished experiments and assets. No original files were changed for the browser version.
 
 ## Clearly separated Git checkpoints
